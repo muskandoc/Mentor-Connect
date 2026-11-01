@@ -163,10 +163,6 @@ th{color:var(--muted);font-weight:500;font-size:12px;white-space:nowrap}
       Mentor Connect
       <span class="chip" style="font-family:'DM Sans',system-ui,sans-serif;font-weight:500">prototype</span>
     </div>
-    <nav class="tabs" role="tablist" aria-label="Views">
-      <button role="tab" data-view="student" aria-selected="true">Student</button>
-      <button role="tab" data-view="about" aria-selected="false">Design notes</button>
-    </nav>
   </div>
 </header>
 
@@ -198,11 +194,6 @@ th{color:var(--muted);font-weight:500;font-size:12px;white-space:nowrap}
 
     <div class="card pad" id="journey"></div>
   </div>
-</section>
-
-<!-- ============ ABOUT ============ -->
-<section id="view-about" class="view">
-  <div class="about" id="about"></div>
 </section>
 
 </main>
@@ -526,7 +517,6 @@ function openBooking(id){
   const prefill = S.j && S.j.topic ? "I’d like advice on: " + S.j.topic.toLowerCase() + "." : "";
   $("#bookBody").innerHTML =
     '<div><h3>Request a call with '+esc(display(m))+'</h3><div class="small muted">'+esc(m.fn)+' · '+esc(m.sec)+'</div></div>'
-   +'<div class="banner" style="margin:0">The mentor list has no availability data, so these are <b>times you’re free</b>, not confirmed slots. The mentor confirms one, then the call happens outside this app.</div>'
    +'<label class="small"><b>What do you want out of this call?</b><textarea id="goal" rows="3" maxlength="400" style="margin-top:6px">'+esc(prefill)+'</textarea></label>'
    +'<div><b class="small">Pick up to 3 times that work (your local time)</b><div id="slots"></div></div>'
    +'<div class="row" style="justify-content:flex-end"><button class="btn" id="bkCancel">Cancel</button><button class="btn primary" id="bkGo" disabled>Send request</button></div>';
@@ -720,58 +710,6 @@ function copyWriteup(btn){
   (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(()=>{btn.textContent="Copied";}, ()=>{btn.textContent="Copy not available";});
 }
 
-/* ============================================================ About / design notes */
-$("#about").innerHTML = `
-<section><h2>What this is</h2>
-<p>A working prototype of the full loop: a student describes a career problem, an assistant matches them to mentors from Mesa’s list, they request a call, the call happens elsewhere, and afterwards they get a clear write-up with next steps.</p>
-<p class="small muted">Try it: <b>Student</b> tab → pick a starter prompt (or one of the “awkward cases”) → request a call → use the dashed prototype controls to move the journey forward → add notes → get the write-up.</p></section>
-
-<section><h2>Key decisions and why</h2>
-<div class="card scroll-x"><table><tbody>
-<tr><td>AI proposes, code verifies</td><td>The model sees the whole mentor list and returns mentor IDs. Every ID is validated against the list before display, “matched on” chips are kept only if the value really exists on that profile, and the cards themselves are rendered from the data, never from model text. The model can phrase a reason, but it can’t invent a mentor or a credential.</td></tr>
-<tr><td>Say “unknown”, don’t guess</td><td>The sheet is sparse: most mentors have no seniority, rating or activity count, and many lack roles. Missing fields show as “not in list”, thin profiles carry a visible “Limited profile” tag and are down-weighted in matching.</td></tr>
-<tr><td>Booking is a <i>request</i></td><td>The list has no availability data, so inventing slots would be fabricating. Students offer up to 3 times they’re free; the mentor confirms; the call link comes from the mentor. Confirmation is simulated in the prototype by the dashed controls.</td></tr>
-<tr><td>Write-up from the student’s notes only</td><td>The call is off-platform, so there’s no transcript. The write-up is built strictly from the student’s own notes, labels any AI-suggested action as such, states a confidence level, and lists what the student wanted to cover but the notes don’t show was answered.</td></tr>
-<tr><td>Privacy by design</td><td>The mentor list’s emails, phone numbers and LinkedIn URLs are never loaded into the app, and chat text isn’t stored anywhere.</td></tr>
-<tr><td>One simple stack</td><td>A static HTML page with plain JavaScript, no frameworks or build step, plus one small serverless function that calls the AI model so the API key never reaches the browser. If the AI is unavailable, the app falls back to keyword matching and says so.</td></tr>
-</tbody></table></div></section>
-
-<section><h2>Awkward cases and how they’re handled</h2>
-<div class="card scroll-x"><table><tbody>
-<tr><td>Vague (“I’m stuck”)</td><td>Asks at most 2 targeted questions per round and at most 2 rounds, then commits to a best-effort answer with caveats rather than interrogating the student.</td></tr>
-<tr><td>Nobody fits</td><td>Says so plainly and explains what’s missing. At most one “closest” mentor, with a caveat.</td></tr>
-<tr><td>Off-topic</td><td>Politely declines and doesn’t force a match.</td></tr>
-<tr><td>Distress or self-harm</td><td>A keyword check runs <i>before</i> any AI call, so it can’t be skipped. The student gets a supportive reply and a helpline pointer (hard-coded, not AI-generated), and no mentor match.</td></tr>
-<tr><td>Prompt injection / asking for contact details</td><td>Student text is treated as untrusted in the prompt. Contact details aren’t in the app’s data, so there’s nothing to leak, and model output is validated against the list.</td></tr>
-<tr><td>Thin or messy mentor data</td><td>De-duplicated (M013, M023 appeared twice), city spellings and boolean variants normalised, limited profiles flagged. Limited profiles are visible to students, so weak data is never presented as strong.</td></tr>
-<tr><td>Mentor doesn’t confirm</td><td>The request stays visibly pending, and the student is told the mentor must confirm one of their times.</td></tr>
-<tr><td>Call didn’t happen</td><td>No-blame path: rebook with the same mentor or choose another.</td></tr>
-<tr><td>Notes too thin or off-topic</td><td>Under ~25 words the app asks for specific additions instead of generating filler. The model can also return “insufficient”. Every write-up shows a confidence level.</td></tr>
-<tr><td>AI unavailable</td><td>Falls back to simple keyword matching and an organised copy of the student’s own notes, each labelled as non-AI.</td></tr>
-</tbody></table></div></section>
-
-<section><h2>How AI is used in the product</h2>
-<ol>
-<li><b>Intake and matching:</b> a conversational step that decides whether to clarify, recommend, say no match, decline, or escalate, returning structured JSON that the app validates.</li>
-<li><b>Write-up:</b> turns rough notes into a summary, discussed topics, advice, an action plan and a next step, with provenance on every action.</li>
-<li><b>Guardrails around the model:</b> grounded catalog in the prompt, ID and chip validation, a deterministic safety check up front, transparent labelling of AI-written text, and non-AI fallbacks.</li>
-</ol></section>
-
-<section><h2>How AI was used to build it</h2>
-<p>An AI assistant was used throughout the build: reading and cleaning the mentor sheet (collapsing duplicates, normalising labels, deciding which columns to exclude for privacy), drafting the matching and write-up prompts, and generating and reviewing the code. Decisions about scope, guardrails and what to leave out were reasoned through in that process.</p>
-<p class="small muted">[Add your own account here: what you asked, what you changed or rejected, and what you verified by hand.]</p></section>
-
-<section><h2>What I left out, and what’s next</h2>
-<ul>
-<li><b>A Mesa team view</b>: a dashboard of journeys, stalled requests and unmet demand, which needs accounts and role-based access.</li>
-<li><b>Real availability and calendar sync</b>, and automated reminders for pending requests and unfinished write-ups.</li>
-<li><b>Mentor-side view</b>: confirming slots and adding their own notes to improve write-up accuracy.</li>
-<li><b>Eval set for matching</b>: a bank of student problems with expected mentors, run on every prompt change.</li>
-<li><b>Mentor data enrichment</b>: richer, verified profiles would improve matching more than any prompt change.</li>
-</ul>
-<p class="disc">Mentor data source: Mentor_Sample_50_Anonymised (Mesa). Names are anonymised in the source, so mentors appear as “Mentor 009” and so on. Some cells in the sheet were ambiguous (blank cells collapse in the export), so a few fields such as AI-native status may need checking against the original.</p></section>
-`;
-
 /* ============================================================ wiring */
 function autosize(){ const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; }
 $("#input").addEventListener("input", autosize);
@@ -780,17 +718,8 @@ $("#sendBtn").addEventListener("click", () => send($("#input").value));
 $("#newBtn").addEventListener("click", resetChat);
 document.querySelectorAll(".starter").forEach(b => b.addEventListener("click", () => send(b.dataset.t)));
 
-function show(view){
-  if(!["student","about"].includes(view)) view = "student";
-  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "view-"+view));
-  document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.view===view));
-  if(location.hash !== "#"+view) { try{ history.replaceState(null,"","#"+view); }catch(e){ location.hash = view; } }
-}
-document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => show(b.dataset.view)));
-window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 
 resetChat();
-show(location.hash.slice(1) || "student");
 </script>
 </body>
 </html>
