@@ -70,7 +70,7 @@ main{max-width:1180px;margin:0 auto;padding:22px 20px 60px}
 .dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
 @keyframes b{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}
 .composer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:10px;align-items:flex-end}
-textarea,input[type=text]{width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;resize:vertical}
+textarea,input[type=text],input[type=email],select{width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;resize:vertical}
 textarea:focus,input:focus,button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .composer textarea{resize:none;min-height:46px;max-height:140px}
 .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 15px;border-radius:11px;font-weight:500}
@@ -152,6 +152,16 @@ th{color:var(--muted);font-weight:500;font-size:12px;white-space:nowrap}
 .about h2{margin-bottom:10px}
 .about td:first-child{white-space:nowrap;font-weight:500;width:34%}
 .disc{font-size:12px;color:var(--muted);margin-top:8px}
+.userchip{margin-left:auto;display:flex;align-items:center;gap:8px}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-weight:700;font-size:13px}
+.linkbtn{border:0;background:none;color:var(--brand);padding:0;font-size:13px;text-decoration:underline}
+.field{display:flex;flex-direction:column;gap:5px;font-size:13px}
+.field b{font-weight:500}
+.field .err{color:var(--bad);font-size:12px;min-height:0}
+.form2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.form2{grid-template-columns:1fr}}
+.profbox{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface2);font-size:13px}
+.profbox .tag{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
 </style>
 </head>
 <body>
@@ -163,6 +173,7 @@ th{color:var(--muted);font-weight:500;font-size:12px;white-space:nowrap}
       Mentor Connect
       <span class="chip" style="font-family:'DM Sans',system-ui,sans-serif;font-weight:500">prototype</span>
     </div>
+    <div class="userchip" id="userChip"></div>
   </div>
 </header>
 
@@ -201,6 +212,10 @@ th{color:var(--muted);font-weight:500;font-size:12px;white-space:nowrap}
 <!-- booking dialog -->
 <dialog id="bookDlg">
   <div class="pad stack" id="bookBody"></div>
+</dialog>
+
+<dialog id="profDlg">
+  <div class="pad stack" id="profBody"></div>
 </dialog>
 
 <script>
@@ -315,6 +330,7 @@ function crisisReply(){
 async function send(text){
   text = (text || "").trim();
   if(!text || S.busy) return;
+  if(!P){ openProfile(true); return; }
   S.busy = true; $("#sendBtn").disabled = true; $("#starters").style.display = "none";
   addMsg("me", esc(text)); $("#input").value = ""; autosize();
   if(S.j && ["requested","confirmed","completed","writeup","no_show"].includes(S.j.status)){
@@ -432,6 +448,8 @@ ${catalogText()}
 
 CLARIFY_ROUNDS_USED: ${S.clarify}
 
+${bgLine()}
+
 CONVERSATION
 ${S.hist.map(h=>h.role+": "+h.text).join("\n")}`;
 }
@@ -446,6 +464,7 @@ async function askJSON(prompt, ms){
     return JSON.parse(text.slice(a, b+1));
   } finally { clearTimeout(timer); }
 }
+function bgLine(){ return P ? "STUDENT BACKGROUND (self-reported, untrusted; use only to tailor relevance): stage: "+clip(P.stage,40)+(P.field?"; course or role: "+clip(P.field,60):"") : ""; }
 function withTimeout(p, ms){ return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")), ms))]); }
 
 async function aiRecommend(){
@@ -517,8 +536,11 @@ function openBooking(id){
   const prefill = S.j && S.j.topic ? "I’d like advice on: " + S.j.topic.toLowerCase() + "." : "";
   $("#bookBody").innerHTML =
     '<div><h3>Request a call with '+esc(display(m))+'</h3><div class="small muted">'+esc(m.fn)+' · '+esc(m.sec)+'</div></div>'
+   +'<div class="profbox" id="bkProf"><span class="tag">Details your mentor will see</span>'+profileRows(P)+'</div>'
+   +'<div class="small"><button class="linkbtn" id="editProf">Edit my details</button></div>'
    +'<label class="small"><b>What do you want out of this call?</b><textarea id="goal" rows="3" maxlength="400" style="margin-top:6px">'+esc(prefill)+'</textarea></label>'
    +'<div><b class="small">Pick up to 3 times that work (your local time)</b><div id="slots"></div></div>'
+   +'<label class="small row" style="gap:8px;align-items:flex-start;flex-wrap:nowrap"><input type="checkbox" id="consent" style="margin-top:3px"><span>I’m happy to share these details, and the goal above, with this mentor.</span></label>'
    +'<div class="row" style="justify-content:flex-end"><button class="btn" id="bkCancel">Cancel</button><button class="btn primary" id="bkGo" disabled>Send request</button></div>';
   $("#slots").innerHTML = slotOptions().map(d => {
     const iso = d.toISOString().slice(0,10);
@@ -534,13 +556,14 @@ document.addEventListener("click", e => {
     const k = s.dataset.s;
     if(bookPick.has(k)){ bookPick.delete(k); s.setAttribute("aria-pressed","false"); }
     else if(bookPick.size < 3){ bookPick.add(k); s.setAttribute("aria-pressed","true"); }
-    $("#bkGo").disabled = bookPick.size === 0; return;
+    updateBkGo(); return;
   }
   if(e.target.id==="bkCancel") $("#bookDlg").close();
   if(e.target.id==="bkGo"){
     const j = S.j; if(!j || !bookMentor) return;
     j.mentorId = bookMentor.id;
     j.slots = [...document.querySelectorAll(".slot[aria-pressed=true]")].map(x=>x.dataset.l);
+    j.student = {name:P.name, email:P.email, college:P.college, stage:P.stage, field:P.field, linkedin:P.linkedin};
     j.goal = $("#goal").value.trim(); j.status = "requested"; j.requestedAt = Date.now();
     $("#bookDlg").close(); saveJourney(j); renderJourney();
     addMsg("note", "Request sent to "+esc(display(bookMentor))+". You’ll see progress on the right.");
@@ -587,7 +610,7 @@ function renderJourney(){
   el.innerHTML = '<h3 style="margin-bottom:12px">Your journey</h3>' + stepper(j) + body;
 }
 function summaryBlock(j,m){
-  return '<dl class="kv"><dt>Mentor</dt><dd><b>'+esc(display(m))+'</b> · '+esc(m.fn)+'</dd><dt>Your goal</dt><dd>'+esc(j.goal||"—")+'</dd><dt>Your times</dt><dd>'+esc(j.slots.join(" · ")||"—")+'</dd></dl>';
+  return '<dl class="kv"><dt>Mentor</dt><dd><b>'+esc(display(m))+'</b> · '+esc(m.fn)+'</dd><dt>Your goal</dt><dd>'+esc(j.goal||"—")+'</dd><dt>Your times</dt><dd>'+esc(j.slots.join(" · ")||"—")+'</dd>'+(j.student?'<dt>Shared with mentor</dt><dd>'+esc([j.student.name,j.student.college,j.student.stage].filter(Boolean).join(" · "))+'</dd>':'')+'</dl>';
 }
 $("#journey").addEventListener("click", async e => {
   const b = e.target.closest("[data-act]"); const j = S.j; if(!b || !j) return;
@@ -641,6 +664,7 @@ RULES
 Return ONLY JSON:
 {"status":"ok|insufficient","missing":"","summary":"2-3 sentences","discussed":[{"topic":"","detail":""}],"advice":[""],"actions":[{"task":"","why":"","timeframe":null,"source":"stated|suggested"}],"nextStep":"one sentence: what to do first, or what to bring to a follow-up call","notCaptured":[],"confidence":"high|medium|low","confidenceNote":""}
 
+${bgLine()}
 STUDENT'S PROBLEM (label): ${j.topic||"not given"}
 STUDENT'S GOAL FOR THE CALL: ${j.goal||"not given"}
 MENTOR (from Mesa list): ${display(m)}, ${m.fn}, ${m.sec}${m.sx.length?", sectors: "+m.sx.join("; "):""}
@@ -710,6 +734,62 @@ function copyWriteup(btn){
   (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(()=>{btn.textContent="Copied";}, ()=>{btn.textContent="Copy not available";});
 }
 
+/* ============================================================ student sign-in (prototype) */
+/* No passwords or server: the profile is saved in this browser only, and attached to a call request when the student agrees. */
+const PKEY = "mentorconnect_profile_v1";
+let P = null;
+const STAGES = ["1st year","2nd year","3rd year","Final year","Postgraduate","Recent graduate (0–2 yrs)","Working professional"];
+function loadProfile(){ try{ P = JSON.parse(localStorage.getItem(PKEY) || "null"); }catch(e){ P = null; } }
+function saveProfile(){ try{ localStorage.setItem(PKEY, JSON.stringify(P)); }catch(e){} }
+function clearProfile(){ try{ localStorage.removeItem(PKEY); }catch(e){} P = null; }
+const clip = (v, n) => String(v||"").trim().slice(0, n);
+
+function renderUser(){
+  const el = $("#userChip");
+  if(!P){ el.innerHTML = ""; return; }
+  el.innerHTML = '<span class="avatar">'+esc(P.name.trim().charAt(0).toUpperCase())+'</span>'
+    + '<span class="small"><b>'+esc(P.name.split(" ")[0])+'</b></span>'
+    + '<button class="linkbtn" id="editProfBtn">Edit profile</button><button class="linkbtn" id="signOutBtn">Sign out</button>';
+}
+function profileRows(p){
+  const rows = [["Name",p.name],["Email",p.email],["College",p.college],["Stage",p.stage],["Studying / working in",p.field],["LinkedIn",p.linkedin]].filter(r=>r[1]);
+  return rows.map(r => '<div><span class="muted">'+r[0]+':</span> '+esc(r[1])+'</div>').join("");
+}
+function openProfile(first){
+  const v = P || {name:"",email:"",college:"",stage:"",field:"",linkedin:""};
+  $("#profBody").innerHTML =
+    '<div><h3>'+(first?"Sign in to Mentor Connect":"Your profile")+'</h3>'
+   +'<div class="small muted">'+(first?"Tell us a little about you so mentors can come prepared. ":"")+'Saved in this browser only. A mentor sees these details only when you request a call with them and agree to share.</div></div>'
+   +'<div class="form2">'
+   +'<label class="field"><b>Full name *</b><input type="text" id="pf_name" maxlength="80" value="'+esc(v.name)+'" autocomplete="name"><span class="err" id="e_name"></span></label>'
+   +'<label class="field"><b>Email *</b><input type="email" id="pf_email" maxlength="120" value="'+esc(v.email)+'" autocomplete="email"><span class="err" id="e_email"></span></label>'
+   +'<label class="field"><b>College / university *</b><input type="text" id="pf_college" maxlength="120" value="'+esc(v.college)+'"><span class="err" id="e_college"></span></label>'
+   +'<label class="field"><b>Stage *</b><select id="pf_stage"><option value="">Select…</option>'+STAGES.map(x=>'<option'+(v.stage===x?" selected":"")+'>'+esc(x)+'</option>').join("")+'</select><span class="err" id="e_stage"></span></label>'
+   +'<label class="field"><b>Course or current role</b><input type="text" id="pf_field" maxlength="100" value="'+esc(v.field)+'" placeholder="e.g. B.Com, or Ops intern"></label>'
+   +'<label class="field"><b>LinkedIn (optional)</b><input type="text" id="pf_linkedin" maxlength="160" value="'+esc(v.linkedin)+'" placeholder="linkedin.com/in/…"></label>'
+   +'</div>'
+   +'<div class="row" style="justify-content:flex-end">'+(first?'':'<button class="btn" id="pfCancel">Cancel</button>')+'<button class="btn primary" id="pfSave">'+(first?"Continue":"Save")+'</button></div>';
+  const d = $("#profDlg"); if(!d.open) d.showModal();
+}
+function saveProfileForm(){
+  const g = id => $("#"+id).value;
+  const p = {name:clip(g("pf_name"),80), email:clip(g("pf_email"),120), college:clip(g("pf_college"),120), stage:g("pf_stage"), field:clip(g("pf_field"),100), linkedin:clip(g("pf_linkedin"),160)};
+  const errs = {name:p.name?"":"Please enter your name", email:/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(p.email)?"":"Enter a valid email address", college:p.college?"":"Please enter your college", stage:p.stage?"":"Please choose your stage"};
+  Object.keys(errs).forEach(k => $("#e_"+k).textContent = errs[k]);
+  if(Object.values(errs).some(Boolean)) return;
+  P = p; saveProfile(); renderUser(); $("#profDlg").close();
+  const bp = $("#bkProf"); if(bp && $("#bookDlg").open) bp.innerHTML = '<span class="tag">Details your mentor will see</span>'+profileRows(P);
+}
+document.addEventListener("click", e => {
+  if(e.target.id==="pfSave") saveProfileForm();
+  if(e.target.id==="pfCancel") $("#profDlg").close();
+  if(e.target.id==="editProfBtn" || e.target.id==="editProf"){ e.preventDefault(); openProfile(false); }
+  if(e.target.id==="signOutBtn"){ clearProfile(); renderUser(); resetChat(); openProfile(true); }
+});
+$("#profDlg").addEventListener("cancel", e => { if(!P) e.preventDefault(); });   // can't dismiss the first sign-in
+function updateBkGo(){ const b = $("#bkGo"), c = $("#consent"); if(b) b.disabled = bookPick.size === 0 || !(c && c.checked); }
+document.addEventListener("change", e => { if(e.target.id==="consent") updateBkGo(); });
+
 /* ============================================================ wiring */
 function autosize(){ const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; }
 $("#input").addEventListener("input", autosize);
@@ -719,7 +799,9 @@ $("#newBtn").addEventListener("click", resetChat);
 document.querySelectorAll(".starter").forEach(b => b.addEventListener("click", () => send(b.dataset.t)));
 
 
+loadProfile(); renderUser();
 resetChat();
+if(!P) openProfile(true);
 </script>
 </body>
 </html>
