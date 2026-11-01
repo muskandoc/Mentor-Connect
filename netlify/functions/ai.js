@@ -1,12 +1,12 @@
-// Netlify Function: thin, server-side proxy to the Anthropic API.
+// Netlify Function: thin, server-side proxy to the AI model.
 // The API key lives in a Netlify environment variable and never reaches the browser.
 exports.handler = async (event) => {
   const json = (statusCode, obj) => ({ statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(obj) });
 
   if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed" });
 
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return json(500, { error: "ANTHROPIC_API_KEY is not set" });
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return json(500, { error: "GEMINI_API_KEY is not set" });
 
   let prompt;
   try { ({ prompt } = JSON.parse(event.body || "{}")); }
@@ -17,19 +17,22 @@ exports.handler = async (event) => {
     return json(400, { error: "Invalid prompt" });
   }
 
+  const model = process.env.GEMINI_MODEL || "gemini-3.7-flash";
+
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      headers: { "content-type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL || "claude-haiku-5-5",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 8192 },
       }),
     });
     if (!r.ok) return json(502, { error: "Upstream error", status: r.status });
     const data = await r.json();
-    const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    const text = parts.map((p) => p.text || "").join("\n");
+    if (!text) return json(502, { error: "Empty response" });
     return json(200, { text });
   } catch (e) {
     return json(502, { error: "Upstream request failed" });
