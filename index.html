@@ -400,7 +400,7 @@ function mentorCard(p){
   const sectors = [...new Set([m.sec,...m.sx])].filter(Boolean).slice(0,6);
   return '<div class="mcard">'
    + '<div class="nm"><div><b>'+esc(display(m))+'</b><div class="small muted">'+esc(m.fn)+' · '+esc(m.sec)+(m.city?' · '+esc(m.city):'')+'</div></div>'
-   + '<button class="btn primary sm" data-book="'+m.id+'">Request a call</button></div>'
+   + '<button class="btn primary sm" data-book="'+m.id+'">Book a call</button></div>'
    + (p.matched && p.matched.length ? '<div class="chips">'+p.matched.map(x=>'<span class="chip match">'+esc(x)+'</span>').join("")+'</div>' : '')
    + (p.why ? '<div class="why"><span class="tag">Why this fit · AI-written from profile fields</span>'+esc(p.why)+'</div>' : '')
    + (p.caveat ? '<div class="cav">⚠ '+esc(p.caveat)+'</div>' : '')
@@ -535,13 +535,13 @@ function openBooking(id){
   const m = bookMentor;
   const prefill = S.j && S.j.topic ? "I’d like advice on: " + S.j.topic.toLowerCase() + "." : "";
   $("#bookBody").innerHTML =
-    '<div><h3>Request a call with '+esc(display(m))+'</h3><div class="small muted">'+esc(m.fn)+' · '+esc(m.sec)+'</div></div>'
+    '<div><h3>Book a call with '+esc(display(m))+'</h3><div class="small muted">'+esc(m.fn)+' · '+esc(m.sec)+'</div></div>'
    +'<div class="profbox" id="bkProf"><span class="tag">Details your mentor will see</span>'+profileRows(P)+'</div>'
    +'<div class="small"><button class="linkbtn" id="editProf">Edit my details</button></div>'
    +'<label class="small"><b>What do you want out of this call?</b><textarea id="goal" rows="3" maxlength="400" style="margin-top:6px">'+esc(prefill)+'</textarea></label>'
-   +'<div><b class="small">Pick up to 3 times that work (your local time)</b><div id="slots"></div></div>'
+   +'<div><b class="small">Pick a time that works (your local time)</b><div id="slots"></div></div>'
    +'<label class="small row" style="gap:8px;align-items:flex-start;flex-wrap:nowrap"><input type="checkbox" id="consent" style="margin-top:3px"><span>I’m happy to share these details, and the goal above, with this mentor.</span></label>'
-   +'<div class="row" style="justify-content:flex-end"><button class="btn" id="bkCancel">Cancel</button><button class="btn primary" id="bkGo" disabled>Send request</button></div>';
+   +'<div class="row" style="justify-content:flex-end"><button class="btn" id="bkCancel">Cancel</button><button class="btn primary" id="bkGo" disabled>Confirm booking</button></div>';
   $("#slots").innerHTML = slotOptions().map(d => {
     const iso = d.toISOString().slice(0,10);
     return '<div class="slotday">'+esc(fmtDay(d))+'</div><div class="row">'
@@ -555,7 +555,7 @@ document.addEventListener("click", e => {
   if(s){
     const k = s.dataset.s;
     if(bookPick.has(k)){ bookPick.delete(k); s.setAttribute("aria-pressed","false"); }
-    else if(bookPick.size < 3){ bookPick.add(k); s.setAttribute("aria-pressed","true"); }
+    else { bookPick.clear(); document.querySelectorAll(".slot").forEach(x=>x.setAttribute("aria-pressed","false")); bookPick.add(k); s.setAttribute("aria-pressed","true"); }
     updateBkGo(); return;
   }
   if(e.target.id==="bkCancel") $("#bookDlg").close();
@@ -564,9 +564,9 @@ document.addEventListener("click", e => {
     j.mentorId = bookMentor.id;
     j.slots = [...document.querySelectorAll(".slot[aria-pressed=true]")].map(x=>x.dataset.l);
     j.student = {name:P.name, email:P.email, college:P.college, stage:P.stage, field:P.field, linkedin:P.linkedin};
-    j.goal = $("#goal").value.trim(); j.status = "requested"; j.requestedAt = Date.now();
+    j.goal = $("#goal").value.trim(); j.status = "confirmed"; j.requestedAt = Date.now(); j.confirmedAt = Date.now(); j.slot = j.slots[0];
     $("#bookDlg").close(); saveJourney(j); renderJourney();
-    addMsg("note", "Request sent to "+esc(display(bookMentor))+". You’ll see progress on the right.");
+    addMsg("note", "Your call with "+esc(display(bookMentor))+" is confirmed for "+esc(j.slot)+". Details are on the right.");
   }
 });
 
@@ -587,17 +587,13 @@ function renderJourney(){
     body = j && j.status==="closed" && j.outcome==="no_match"
       ? '<p class="small muted">No mentor in the list fit this time. Try rephrasing on the left if you think I’ve misread you.</p>'
       : j && j.status==="closed" ? '<p class="small muted">This conversation has ended. Start a new problem whenever you like.</p>'
-      : '<p class="small muted">Here’s how it works:</p><ol class="small muted" style="padding-left:18px;margin:0"><li>Describe your problem to the assistant.</li><li>Pick a mentor from the suggestions and request a call.</li><li>Take the call (outside this app).</li><li>Come back, add your notes, and get a clear write-up with next steps.</li></ol>';
+      : '<p class="small muted">Here’s how it works:</p><ol class="small muted" style="padding-left:18px;margin:0"><li>Describe your problem to the assistant.</li><li>Pick a mentor from the suggestions and book a call.</li><li>Take the call (outside this app).</li><li>Come back, add your notes, and get a clear write-up with next steps.</li></ol>';
   } else if(j.status==="matched"){
-    body = '<p class="small">I’ve suggested mentors from Mesa’s list. Choose one and press <b>Request a call</b> in the chat.</p>';
-  } else if(j.status==="requested"){
-    const m = BY[j.mentorId];
-    body = summaryBlock(j,m) + '<div class="banner" style="margin-top:12px">Waiting for '+esc(display(m))+' to confirm one of your times.</div>'
-      + '<div class="proto"><div class="lbl">Prototype controls · stands in for real mentor actions</div><button class="btn sm" data-act="confirm">Simulate: mentor confirms</button></div>';
+    body = '<p class="small">I’ve suggested mentors from Mesa’s list. Choose one and press <b>Book a call</b> in the chat.</p>';
   } else if(j.status==="confirmed"){
     const m = BY[j.mentorId];
-    body = summaryBlock(j,m) + '<div class="banner ok" style="margin-top:12px">Confirmed for <b>'+esc(j.slot||j.slots[0])+'</b>. The mentor sends the call link; the call happens outside Mentor Connect. Afterwards, come back here for your write-up.</div>'
-      + '<div class="proto"><div class="lbl">Prototype controls · after the call</div><div class="row"><button class="btn sm primary" data-act="happened">The call happened</button><button class="btn sm" data-act="noshow">The call didn’t happen</button></div></div>';
+    body = summaryBlock(j,m) + '<div class="banner ok" style="margin-top:12px">Confirmed for <b>'+esc(j.slot||j.slots[0])+'</b>. The mentor will send you the call link. After your call, come back here to add your notes and get your write-up.</div>'
+      + '<div class="row" style="margin-top:12px"><button class="btn primary" data-act="happened">I’ve had my call: add my notes</button><button class="linkbtn" data-act="noshow">My call didn’t happen</button></div>';
   } else if(j.status==="no_show"){
     const m = BY[j.mentorId];
     body = summaryBlock(j,m) + '<div class="banner" style="margin-top:12px"><b>That call didn’t happen.</b> It’s no one’s fault, so what next?</div>'
@@ -610,7 +606,7 @@ function renderJourney(){
   el.innerHTML = '<h3 style="margin-bottom:12px">Your journey</h3>' + stepper(j) + body;
 }
 function summaryBlock(j,m){
-  return '<dl class="kv"><dt>Mentor</dt><dd><b>'+esc(display(m))+'</b> · '+esc(m.fn)+'</dd><dt>Your goal</dt><dd>'+esc(j.goal||"—")+'</dd><dt>Your times</dt><dd>'+esc(j.slots.join(" · ")||"—")+'</dd>'+(j.student?'<dt>Shared with mentor</dt><dd>'+esc([j.student.name,j.student.college,j.student.stage].filter(Boolean).join(" · "))+'</dd>':'')+'</dl>';
+  return '<dl class="kv"><dt>Mentor</dt><dd><b>'+esc(display(m))+'</b> · '+esc(m.fn)+'</dd><dt>Your goal</dt><dd>'+esc(j.goal||"—")+'</dd><dt>When</dt><dd>'+esc(j.slot||j.slots[0]||"—")+'</dd>'+(j.student?'<dt>Shared with mentor</dt><dd>'+esc([j.student.name,j.student.college,j.student.stage].filter(Boolean).join(" · "))+'</dd>':'')+'</dl>';
 }
 $("#journey").addEventListener("click", async e => {
   const b = e.target.closest("[data-act]"); const j = S.j; if(!b || !j) return;
@@ -759,7 +755,7 @@ function openProfile(first){
   const v = P || {name:"",email:"",college:"",stage:"",field:"",linkedin:""};
   $("#profBody").innerHTML =
     '<div><h3>'+(first?"Sign in to Mentor Connect":"Your profile")+'</h3>'
-   +'<div class="small muted">'+(first?"Tell us a little about you so mentors can come prepared. ":"")+'Saved in this browser only. A mentor sees these details only when you request a call with them and agree to share.</div></div>'
+   +'<div class="small muted">'+(first?"Tell us a little about you so mentors can come prepared. ":"")+'Saved in this browser only. A mentor sees these details only when you book a call with them and agree to share.</div></div>'
    +'<div class="form2">'
    +'<label class="field"><b>Full name *</b><input type="text" id="pf_name" maxlength="80" value="'+esc(v.name)+'" autocomplete="name"><span class="err" id="e_name"></span></label>'
    +'<label class="field"><b>Email *</b><input type="email" id="pf_email" maxlength="120" value="'+esc(v.email)+'" autocomplete="email"><span class="err" id="e_email"></span></label>'
